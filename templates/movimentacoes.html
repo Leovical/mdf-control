@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>MDF Control — Movimentações de Estoque (Kardex)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        html { overflow-y: scroll; }
+    </style>
+</head>
+<body class="bg-light">
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="/produtos">🌲 MDF Control | ERP Industrial</a>
+        <div class="navbar-nav">
+            <a class="nav-link" href="/produtos">1. Produtos & Estoque</a>
+            <a class="nav-link" href="/fornecedores">2. Fornecedores</a>
+            <a class="nav-link active" href="/movimentacoes">3. Movimentações (Kardex)</a>
+            <a class="nav-link" href="/relatorios">4. Relatórios SQL</a>
+        </div>
+    </div>
+</nav>
+
+<div class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <div class="row">
+        <!-- coluna esquerda: registro de movimentação -->
+        <div class="col-md-4">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-primary text-white fw-bold">
+                    Registrar Movimentação (Módulo 4)
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="/movimentacoes">
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Produto / Chapa *</label>
+                            <select name="produto_id" class="form-select form-select-sm" required>
+                                <option value="" selected disabled>Selecione um produto...</option>
+                                {% for p in produtos %}
+                                    <option value="{{ p['id'] }}">
+                                        {{ p['codigo_sku'] }} - {{ p['nome'] }} (Saldo: {{ p['estoque_atual'] }})
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Tipo de Operação *</label>
+                            <select name="tipo_movimentacao" id="selectTipo" class="form-select form-select-sm" required>
+                                <option value="ENTRADA">🟢 ENTRADA (Compra / Produção)</option>
+                                <option value="SAIDA">🔴 SAÍDA (Expedição / Consumo Fabril)</option>
+                                <option value="AJUSTE">🟡 AJUSTE (Baixa por Avaria / Inventário)</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3" id="divFornecedor">
+                            <label class="form-label small fw-bold">Fornecedor (Obrigatório na Entrada) *</label>
+                            <select name="fornecedor_id" id="selectFornecedor" class="form-select form-select-sm" required>
+                                <option value="" selected disabled>Selecione o fornecedor...</option>
+                                {% for f in fornecedores %}
+                                    <option value="{{ f['id'] }}">{{ f['razao_social'] }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Quantidade (Unidades/Chapas) *</label>
+                            <input type="number" name="quantidade" class="form-control form-control-sm" min="1" placeholder="Ex: 100" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Motivo / Documento Referência *</label>
+                            <input type="text" name="motivo" class="form-control form-control-sm" placeholder="Ex: Compra NF 4590 / Ordem Prod. #12" required>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100 fw-bold">Confirmar Transação</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- coluna direita: extrato kardex (histórico) -->
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-secondary text-white fw-bold">
+                    Histórico de Movimentações — Kardex Industrial (Auditoria)
+                </div>
+                <div class="card-body table-responsive">
+                    <table class="table table-hover table-sm align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Data/Hora</th>
+                                <th>Tipo</th>
+                                <th>Produto</th>
+                                <th class="text-center">Qtd</th>
+                                <th>Motivo / Fornecedor</th>
+                                <th>Responsável</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for m in movimentacoes %}
+                            <tr>
+                                <td><small class="text-muted">{{ m['data_movimentacao'] }}</small></td>
+                                <td>
+                                    {% if m['tipo_movimentacao'] == 'ENTRADA' %}
+                                        <span class="badge bg-success">ENTRADA</span>
+                                    {% elif m['tipo_movimentacao'] == 'SAIDA' %}
+                                        <span class="badge bg-danger">SAÍDA</span>
+                                    {% else %}
+                                        <span class="badge bg-warning text-dark">AJUSTE</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="fw-bold">{{ m['codigo_sku'] }}</span><br>
+                                    <small class="text-muted">{{ m['produto_nome'] }}</small>
+                                </td>
+                                <td class="text-center fw-bold fs-6">
+                                    {% if m['tipo_movimentacao'] == 'ENTRADA' %}+{% else %}-{% endif %}{{ m['quantidade'] }}
+                                </td>
+                                <td>
+                                    {{ m['motivo'] }}<br>
+                                    {% if m['fornecedor_nome'] %}
+                                        <small class="text-primary">🏢 {{ m['fornecedor_nome'] }}</small>
+                                    {% else %}
+                                        <small class="text-muted">Movimentação Interna</small>
+                                    {% endif %}
+                                </td>
+                                <td><small>👤 {{ m['usuario_nome'] }}</small></td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-3">Nenhuma movimentação registrada ainda.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // Esconde/Desabilita o campo de fornecedor quando for SAIDA ou AJUSTE
+    const selectTipo = document.getElementById('selectTipo');
+    const divFornecedor = document.getElementById('divFornecedor');
+    const selectFornecedor = document.getElementById('selectFornecedor');
+
+    selectTipo.addEventListener('change', function() {
+        if (this.value === 'ENTRADA') {
+            divFornecedor.style.display = 'block';
+            selectFornecedor.required = true;
+        } else {
+            divFornecedor.style.display = 'none';
+            selectFornecedor.required = false;
+            selectFornecedor.value = '';
+        }
+    });
+</script>
+</body>
+</html>

@@ -116,5 +116,110 @@ def gerenciar_fornecedores():
 
     return render_template('fornecedores.html', fornecedores=fornecedores)
 
+@app.route('/movimentacoes', methods=['GET', 'POST'])
+def gerenciar_movimentacoes():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    if request.method == 'POST':
+        produto_id = int(request.form['produto_id'])
+        tipo_movimentacao = request.form['tipo_movimentacao']
+        quantidade = int(request.form['quantidade'])
+        motivo = request.form['motivo'].strip()
+        
+        # usuário seleciona um fornecedor no formulário = int; se deixou em branco, vira none (null no banco)
+        fornecedor_id_raw = request.form.get('fornecedor_id')
+        fornecedor_id = int(fornecedor_id_raw) if fornecedor_id_raw else None
+        
+        # usuário padrão logado (analista/operador id = 1)
+        usuario_id = 1
+
+        if quantidade <= 0:
+            flash('Erro: A quantidade movimentada deve ser maior que zero!', 'danger')
+            conn.close()
+            return redirect(url_for('gerenciar_movimentacoes'))
+
+        if tipo_movimentacao == 'ENTRADA' and not fornecedor_id:
+            flash('Erro: Para registrar uma ENTRADA, selecione o Fornecedor!', 'danger')
+            conn.close()
+            return redirect(url_for('gerenciar_movimentacoes'))
+
+        cursor.execute('SELECT nome, codigo_sku, estoque_atual FROM produtos WHERE id = ?', (produto_id,))
+        produto = cursor.fetchone()
+        saldo_atual = produto['estoque_atual']
+
+        # validação do saldo disponível
+        if tipo_movimentacao == 'ENTRADA':
+            novo_saldo = saldo_atual + quantidade
+        elif tipo_movimentacao in ['SAIDA', 'AJUSTE']:
+            if quantidade > saldo_atual:
+                flash(f'Operação Bloqueada: Estoque insuficiente para {produto["codigo_sku"]}! Saldo disponível: {saldo_atual} un.', 'danger')
+                conn.close()
+                return redirect(url_for('gerenciar_movimentacoes'))
+            else:
+                novo_saldo = saldo_atual - quantidade
+                fornecedor_id = None
+
+        # acid - atomicidade: tudo ou nada
+        try:
+            cursor.execute(
+                '''INSERT INTO movimentacoes 
+                   (produto_id, usuario_id, fornecedor_id, tipo_movimentacao, quantidade, motivo) 
+                   VALUES (?, ?, ?, ?, ?, ?)''',
+                (produto_id, usuario_id, fornecedor_id, tipo_movimentacao, quantidade, motivo)
+            )
+
+            cursor.execute(
+                'UPDATE produtos SET estoque_atual = ? WHERE id = ?',
+                (novo_saldo, produto_id)
+            )
+
+            # confirma as duas operações juntas no banco de dados
+            conn.commit()
+            flash(f'Movimentação ({tipo_movimentacao}) de {quantidade} un. do produto {produto["codigo_sku"]} registrada! Novo saldo: {novo_saldo} un.', 'success')
+        except Exception as e:
+            # desfaz qualquer alteração parcial caso ocorra falha
+            conn.rollback()
+            flash(f'Erro crítico na transação de estoque (Rollback executado): {str(e)}', 'danger')
+        finally:
+            conn.close()
+
+        return redirect(url_for('gerenciar_movimentacoes'))
+
+    # método get: busca produtos e fornecedores para preencher os <select> do formulário
+    cursor.execute('SELECT id, codigo_sku, nome, estoque_atual FROM produtos ORDER BY nome ASC')
+    produtos = cursor.fetchall()
+
+    cursor.execute('SELECT id, razao_social FROM fornecedores ORDER BY razao_social ASC')
+    fornecedores = cursor.fetchall()
+
+    # busca o histórico de movimentações cruzando 4 tabelas
+    cursor.execute(
+        '''SELECT 
+            m.id,
+            m.tipo_movimentacao,
+            m.quantidade,
+            m.motivo,
+            strftime('%d/%m/%Y %H:%M:%S', m.data_movimentacao, 'localtime') AS data_movimentacao,
+            p.codigo_sku,
+            p.nome AS produto_nome,
+            u.nome AS usuario_nome,
+            f.razao_social AS fornecedor_nome
+           FROM movimentacoes m
+           INNER JOIN produtos p ON m.produto_id = p.id
+           INNER JOIN usuarios u ON m.usuario_id = u.id
+           LEFT JOIN fornecedores f ON m.fornecedor_id = f.id
+           ORDER BY m.data_movimentacao DESC, m.id DESC'''
+    )
+    movimentacoes = cursor.fetchall()
+    conn.close()
+
+    return render_template(
+        'movimentacoes.html',
+        produtos=produtos,
+        fornecedores=fornecedores,
+        movimentacoes=movimentacoes
+    )
+
 if __name__ == '__main__':
     app.run(debug=True)
