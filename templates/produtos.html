@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>MDF Control — Gestão de Produtos e Estoque</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="/produtos">🌲 MDF Control | ERP Industrial</a>
+        <div class="navbar-nav">
+            <a class="nav-link active" href="/produtos">1. Produtos & Estoque</a>
+            <a class="nav-link" href="/fornecedores">2. Fornecedores</a>
+            <a class="nav-link" href="/movimentacoes">3. Movimentações (Kardex)</a>
+            <a class="nav-link" href="/relatorios">4. Relatórios SQL</a>
+        </div>
+    </div>
+</nav>
+
+<div class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <div class="row">
+        <!-- coluna da esquerda: formulário de cadastro -->
+        <div class="col-md-4">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-primary text-white fw-bold">
+                    Cadastrar Novo Produto / Chapa
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="/produtos">
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold">Código SKU *</label>
+                            <input type="text" name="codigo_sku" class="form-control form-control-sm" placeholder="Ex: MDF-BCO-15MM" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold">Nome / Descrição *</label>
+                            <input type="text" name="nome" class="form-control form-control-sm" placeholder="Ex: Chapa MDF Branco TX" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold">Categoria *</label>
+                            <select name="categoria" class="form-select form-select-sm" required>
+                                <option value="MDF Cru">MDF Cru</option>
+                                <option value="MDF Revestido">MDF Revestido (Melamina)</option>
+                                <option value="HDF / Chapa Fina">HDF / Chapa Fina</option>
+                                <option value="Insumo Químico">Insumo Químico (Resina/Parafina)</option>
+                            </select>
+                        </div>
+                        <div class="row mb-2">
+                            <div class="col-4">
+                                <label class="form-label small fw-bold">Espess.(mm)</label>
+                                <input type="number" name="espessura_mm" class="form-control form-control-sm" value="15" min="0" required>
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label small fw-bold">Larg.(mm)</label>
+                                <input type="number" name="largura_mm" class="form-control form-control-sm" value="1850" min="0" required>
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label small fw-bold">Comp.(mm)</label>
+                                <input type="number" name="comprimento_mm" class="form-control form-control-sm" value="2750" min="0" required>
+                            </div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold">Acabamento *</label>
+                            <input type="text" name="acabamento" class="form-control form-control-sm" placeholder="Ex: Branco TX, Cru, Freijó" required>
+                        </div>
+                        <div class="row mb-2">
+                            <div class="col-6">
+                                <label class="form-label small fw-bold">Estoque Mínimo *</label>
+                                <input type="number" name="estoque_minimo" class="form-control form-control-sm" value="50" min="0" required>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small fw-bold">Custo Unit. (R$) *</label>
+                                <input type="number" step="0.01" name="preco_custo" class="form-control form-control-sm" placeholder="145.50" min="0" required>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Localização no Galpão</label>
+                            <input type="text" name="localizacao" class="form-control form-control-sm" placeholder="Ex: Galpão A - Rua 02">
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100 fw-bold">Salvar Produto</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- coluna da direita: tabela de controle de estoque -->
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-secondary text-white fw-bold">
+                    Posição Atual de Estoque (Módulos 1 & 3)
+                </div>
+                <div class="card-body table-responsive">
+                    <table class="table table-hover table-sm align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>SKU</th>
+                                <th>Produto / Dimensões</th>
+                                <th>Localização</th>
+                                <th class="text-center">Saldo Atual</th>
+                                <th class="text-center">Mínimo</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in produtos %}
+                            <tr class="{% if p['estoque_atual'] < p['estoque_minimo'] %}table-danger{% endif %}">
+                                <td class="fw-bold">{{ p['codigo_sku'] }}</td>
+                                <td>
+                                    {{ p['nome'] }} ({{ p['acabamento'] }})<br>
+                                    <small class="text-muted">{{ p['categoria'] }} | {{ p['espessura_mm'] }}x{{ p['largura_mm'] }}x{{ p['comprimento_mm'] }}mm | R$ {{ "%.2f"|format(p['preco_custo']) }}</small>
+                                </td>
+                                <td><small>{{ p['localizacao'] or 'Não informada' }}</small></td>
+                                <td class="text-center fw-bold fs-6">{{ p['estoque_atual'] }}</td>
+                                <td class="text-center text-muted">{{ p['estoque_minimo'] }}</td>
+                                <td>
+                                    {% if p['estoque_atual'] < p['estoque_minimo'] %}
+                                        <span class="badge bg-danger">Abaixo do Mínimo</span>
+                                    {% else %}
+                                        <span class="badge bg-success">Normal</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-3">Nenhum produto cadastrado ainda.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
