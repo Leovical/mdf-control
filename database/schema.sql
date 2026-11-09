@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS fornecedores(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     razao_social TEXT NOT NULL, 
     cnpj TEXT NOT NULL UNIQUE,
-    contato TEXT,
+    telefone TEXT NULL,
+    email TEXT NOT NULL,
     data_cadastro DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

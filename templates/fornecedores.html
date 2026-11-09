@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>MDF Control — Gestão de Fornecedores</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        html { overflow-y: scroll; }
+    </style>
+</head>
+<body class="bg-light">
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="/produtos">🌲 MDF Control | ERP Industrial</a>
+        <div class="navbar-nav">
+            <a class="nav-link" href="/produtos">1. Produtos & Estoque</a>
+            <a class="nav-link active" href="/fornecedores">2. Fornecedores</a>
+            <a class="nav-link" href="/movimentacoes">3. Movimentações (Kardex)</a>
+            <a class="nav-link" href="/relatorios">4. Relatórios SQL</a>
+        </div>
+    </div>
+</nav>
+
+<div class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <div class="row">
+        <!-- coluna da esquerda: cadastro de fornecedor -->
+        <div class="col-md-4">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-primary text-white fw-bold">
+                    Cadastrar Fornecedor (Módulo 2)
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="/fornecedores">
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Razão Social / Nome *</label>
+                            <input type="text" name="razao_social" class="form-control form-control-sm" placeholder="Ex: Química Industrial Pará Ltda" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">CNPJ (Apenas números) *</label>
+                            <input type="text" id="inputCnpj" name="cnpj" class="form-control form-control-sm" placeholder="00.000.000/0000-00" maxlength="18" minlength="18" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Telefone (Com DDD) *</label>
+                            <input type="text" id="inputTelefone" name="telefone" class="form-control form-control-sm" placeholder="(91) 98888-7777" maxlength="15" minlength="14" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">E-mail Comercial *</label>
+                            <input type="email" name="email" class="form-control form-control-sm" placeholder="comercial@fornecedor.com.br" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100 fw-bold">Salvar Fornecedor</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- coluna da direita: lista e histórico de fornecimento -->
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-secondary text-white fw-bold">
+                    Fornecedores Homologados & Histórico de Entradas (LEFT JOIN)
+                </div>
+                <div class="card-body table-responsive">
+                    <table class="table table-hover table-sm align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>ID</th>
+                                <th>Razão Social / Contatos</th>
+                                <th>CNPJ</th>
+                                <th class="text-center">Entregas (NFs)</th>
+                                <th class="text-center">Volume Total Fornecido</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for f in fornecedores %}
+                            <tr>
+                                <td class="text-muted">#{{ f['id'] }}</td>
+                                <td>
+                                    <span class="fw-bold">{{ f['razao_social'] }}</span><br>
+                                    <small class="text-muted">📞 {{ f['telefone'] }} | ✉️ {{ f['email'] }}</small>
+                                </td>
+                                <td><code>{{ f['cnpj'] }}</code></td>
+                                <td class="text-center">
+                                    <span class="badge bg-info text-dark">{{ f['total_entregas'] }} entregas</span>
+                                </td>
+                                <td class="text-center fw-bold">
+                                    {{ f['total_itens_fornecidos'] }} un.
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-3">Nenhum fornecedor cadastrado ainda.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- script de máscaras automáticas (cnpj e telefone) -->
+<script>
+    const inputCnpj = document.getElementById('inputCnpj');
+    const inputTelefone = document.getElementById('inputTelefone');
+
+    // máscara de cnpj: 00.000.000/0000-00
+    inputCnpj.addEventListener('input', function (e) {
+        let v = e.target.value.replace(/\D/g, ''); // remover tudo que não é dígito numérico
+        if (v.length > 14) v = v.slice(0, 14);
+        v = v.replace(/^(\d{2})(\d)/, '$1.$2');
+        v = v.replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3');
+        v = v.replace(/\.(\d{3})(\d)/, '.$1/$2');
+        v = v.replace(/(\d{4})(\d)/, '$1-$2');
+        e.target.value = v;
+    });
+
+    // máscara de telefone: (00) 00000-0000
+    inputTelefone.addEventListener('input', function (e) {
+        let v = e.target.value.replace(/\D/g, ''); // remover tbm tudo que não é dígito numérico
+        if (v.length > 11) v = v.slice(0, 11);
+        v = v.replace(/^(\d{2})(\d)/g, '($1) $2');
+        v = v.replace(/(\d)(\d{4})$/, '$1-$2');
+        e.target.value = v;
+    });
+</script>
+</body>
+</html>
