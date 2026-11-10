@@ -221,5 +221,81 @@ def gerenciar_movimentacoes():
         movimentacoes=movimentacoes
     )
 
+@app.route('/relatorios')
+def relatorios_gerenciais():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # kpis gerais 
+    cursor.execute(
+        '''SELECT 
+            COUNT(id) AS total_skus,
+            COALESCE(SUM(estoque_atual), 0) AS total_pecas,
+            COALESCE(SUM(estoque_atual * preco_custo), 0.0) AS valor_total_estoque,
+            SUM(CASE WHEN estoque_atual < estoque_minimo THEN 1 ELSE 0 END) AS total_alertas
+           FROM produtos'''
+    )
+    kpis = cursor.fetchone()
+
+    # produtos abaixo do estoque mínimo
+    cursor.execute(
+        '''SELECT 
+            p.codigo_sku,
+            p.nome,
+            p.categoria, 
+            p.localizacao,
+            p.estoque_atual,
+            p.estoque_minimo,
+            (p.estoque_minimo - p.estoque_atual) AS deficit_reposicao,
+            ((p.estoque_minimo - p.estoque_atual) * p.preco_custo) AS custo_estimado_reposicao
+           FROM produtos p
+           WHERE p.estoque_atual < p.estoque_minimo
+           ORDER BY deficit_reposicao DESC'''
+    )
+    produtos_criticos = cursor.fetchall()
+
+    # ranking de produtos com maior movimentação / giro 
+    cursor.execute(
+        '''SELECT 
+            p.codigo_sku,
+            p.nome,
+            p.categoria,
+            COALESCE(SUM(CASE WHEN m.tipo_movimentacao = 'ENTRADA' THEN m.quantidade ELSE 0 END), 0) AS total_entradas,
+            COALESCE(SUM(CASE WHEN m.tipo_movimentacao = 'SAIDA' THEN m.quantidade ELSE 0 END), 0) AS total_saidas,
+            COALESCE(SUM(CASE WHEN m.tipo_movimentacao = 'AJUSTE' THEN m.quantidade ELSE 0 END), 0) AS total_ajustes,
+            COALESCE(SUM(m.quantidade), 0) AS volume_total_movimentado
+           FROM produtos p
+           LEFT JOIN movimentacoes m ON p.id = m.produto_id
+           GROUP BY p.id
+           ORDER BY volume_total_movimentado DESC'''
+    )
+    ranking_giro = cursor.fetchall()
+
+    # balanço por tipo de movimentação (entradas vs saídas vs ajustes)
+    cursor.execute(
+        '''SELECT 
+            m.tipo_movimentacao,
+            COUNT(m.id) AS total_operacoes,
+            SUM(m.quantidade) AS volume_total
+           FROM movimentacoes m
+           GROUP BY m.tipo_movimentacao'''
+    )
+    resumo_movimentacoes = cursor.fetchall()
+
+    # valor financeiro por produto em estoque (usando a view)
+    cursor.execute('SELECT * FROM vw_posicao_estoque ORDER BY valor_total_estoque DESC')
+    estoque_valorizado = cursor.fetchall()
+
+    conn.close()
+
+    return render_template(
+        'relatorios.html',
+        kpis=kpis,
+        produtos_criticos=produtos_criticos,
+        ranking_giro=ranking_giro,
+        resumo_movimentacoes=resumo_movimentacoes,
+        estoque_valorizado=estoque_valorizado
+    )
+
 if __name__ == '__main__':
     app.run(debug=True)

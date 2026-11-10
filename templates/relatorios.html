@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>MDF Control — Relatórios SQL & Dashboard Industrial</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        html { overflow-y: scroll; }
+    </style>
+</head>
+<body class="bg-light">
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="/produtos">🌲 MDF Control | ERP Industrial</a>
+        <div class="navbar-nav">
+            <a class="nav-link" href="/produtos">1. Produtos & Estoque</a>
+            <a class="nav-link" href="/fornecedores">2. Fornecedores</a>
+            <a class="nav-link" href="/movimentacoes">3. Movimentações (Kardex)</a>
+            <a class="nav-link active" href="/relatorios">4. Relatórios SQL</a>
+        </div>
+    </div>
+</nav>
+
+<div class="container pb-5">
+    <!-- cards de indicadores (kpis executivos) -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card border-primary shadow-sm h-100">
+                <div class="card-body">
+                    <h6 class="text-muted small fw-bold text-uppercase">SKUs Cadastrados</h6>
+                    <h2 class="fw-bold text-primary mb-0">{{ kpis['total_skus'] }} <small class="fs-6 text-muted">itens</small></h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-info shadow-sm h-100">
+                <div class="card-body">
+                    <h6 class="text-muted small fw-bold text-uppercase">Saldo Físico Total</h6>
+                    <h2 class="fw-bold text-dark mb-0">{{ kpis['total_pecas'] }} <small class="fs-6 text-muted">chapas/un.</small></h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-success shadow-sm h-100">
+                <div class="card-body">
+                    <h6 class="text-muted small fw-bold text-uppercase">Valor Estimado em Estoque</h6>
+                    <h2 class="fw-bold text-success mb-0">R$ {{ "%.2f"|format(kpis['valor_total_estoque']) }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-danger shadow-sm h-100">
+                <div class="card-body">
+                    <h6 class="text-muted small fw-bold text-uppercase">Alertas de Estoque Baixo</h6>
+                    <h2 class="fw-bold text-danger mb-0">{{ kpis['total_alertas'] or 0 }} <small class="fs-6 text-muted">críticos</small></h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- produtos abaixo do estoque mínimo (necessidade de compra/PCP) -->
+        <div class="col-md-7 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-danger text-white fw-bold">
+                    ⚠️ Relatório 1: Produtos Abaixo do Estoque Mínimo (Ação de Compras / PCP)
+                </div>
+                <div class="card-body table-responsive">
+                    <table class="table table-sm table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>SKU / Produto</th>
+                                <th class="text-center">Saldo</th>
+                                <th class="text-center">Mínimo</th>
+                                <th class="text-center">Déficit (Comprar)</th>
+                                <th class="text-end">Custo Reposição</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in produtos_criticos %}
+                            <tr>
+                                <td>
+                                    <span class="fw-bold text-danger">{{ p['codigo_sku'] }}</span><br>
+                                    <small class="text-muted">{{ p['nome'] }} ({{ p['localizacao'] or 'S/ Local' }})</small>
+                                </td>
+                                <td class="text-center fw-bold">{{ p['estoque_atual'] }}</td>
+                                <td class="text-center text-muted">{{ p['estoque_minimo'] }}</td>
+                                <td class="text-center"><span class="badge bg-danger">+{{ p['deficit_reposicao'] }} un.</span></td>
+                                <td class="text-end fw-bold">R$ {{ "%.2f"|format(p['custo_estimado_reposicao']) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center text-success fw-bold py-3">
+                                    ✅ Excelente! Nenhum produto está abaixo do estoque mínimo no momento.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- balanço entradas vs saídas vs ajustes -->
+        <div class="col-md-5 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-dark text-white fw-bold">
+                    📊 Relatório 2: Balanço por Tipo de Operação (GROUP BY)
+                </div>
+                <div class="card-body table-responsive">
+                    <table class="table table-sm table-bordered align-middle text-center">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Tipo de Movimentação</th>
+                                <th>Qtd. Operações</th>
+                                <th>Volume Total (Un.)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in resumo_movimentacoes %}
+                            <tr>
+                                <td class="fw-bold">
+                                    {% if r['tipo_movimentacao'] == 'ENTRADA' %}
+                                        <span class="badge bg-success">ENTRADA</span>
+                                    {% elif r['tipo_movimentacao'] == 'SAIDA' %}
+                                        <span class="badge bg-danger">SAÍDA</span>
+                                    {% else %}
+                                        <span class="badge bg-warning text-dark">AJUSTE / AVARIA</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ r['total_operacoes'] }} lançamentos</td>
+                                <td class="fw-bold fs-6">{{ r['volume_total'] }} un.</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="3" class="text-muted py-3">Sem movimentações registradas.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- giro de estoque (produtos mais movimentados) -->
+        <div class="col-md-6 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-primary text-white fw-bold">
+                    🔄 Relatório 3: Produtos com Maior Movimentação (Giro Industrial)
+                </div>
+                <div class="card-body table-responsive">
+                    <table class="table table-sm table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>SKU / Produto</th>
+                                <th class="text-center text-success">Entradas</th>
+                                <th class="text-center text-danger">Saídas</th>
+                                <th class="text-center text-warning">Ajustes</th>
+                                <th class="text-center fw-bold">Volume Giro</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for g in ranking_giro %}
+                            <tr>
+                                <td>
+                                    <span class="fw-bold">{{ g['codigo_sku'] }}</span><br>
+                                    <small class="text-muted">{{ g['nome'] }}</small>
+                                </td>
+                                <td class="text-center text-success">+{{ g['total_entradas'] }}</td>
+                                <td class="text-center text-danger">-{{ g['total_saidas'] }}</td>
+                                <td class="text-center text-muted">-{{ g['total_ajustes'] }}</td>
+                                <td class="text-center fw-bold">{{ g['volume_total_movimentado'] }} un.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- valoração de estoque (consultando a view sql) -->
+        <div class="col-md-6 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-secondary text-white fw-bold">
+                    💰 Relatório 4: Valor Estimado do Estoque por Item (SQL View)
+                </div>
+                <div class="card-body table-responsive">
+                    <table class="table table-sm table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>SKU / Produto</th>
+                                <th class="text-center">Saldo</th>
+                                <th class="text-end">Custo Unit.</th>
+                                <th class="text-end">Subtotal Estocado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for v in estoque_valorizado %}
+                            <tr>
+                                <td>
+                                    <span class="fw-bold">{{ v['codigo_sku'] }}</span><br>
+                                    <small class="text-muted">{{ v['nome'] }}</small>
+                                </td>
+                                <td class="text-center">{{ v['estoque_atual'] }} un.</td>
+                                <td class="text-end text-muted">R$ {{ "%.2f"|format(v['preco_custo']) }}</td>
+                                <td class="text-end fw-bold text-success">R$ {{ "%.2f"|format(v['valor_total_estoque']) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -50,3 +50,46 @@ CREATE TABLE IF NOT EXISTS movimentacoes(
     FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
     FOREIGN KEY (fornecedor_id) REFERENCES fornecedores(id)
 );
+
+-- 5. view de posição de estoque valorizada e status de alerta (relatórios e power bi)
+CREATE VIEW IF NOT EXISTS vw_posicao_estoque AS
+SELECT 
+    id,
+    codigo_sku,
+    nome,
+    categoria,
+    espessura_mm,
+    largura_mm,
+    comprimento_mm,
+    acabamento,
+    localizacao,
+    estoque_atual,
+    estoque_minimo,
+    preco_custo,
+    ROUND(estoque_atual * preco_custo, 2) AS valor_total_estoque,
+    CASE 
+        WHEN estoque_atual < estoque_minimo THEN 'ABAIXO DO MINIMO'
+        ELSE 'NORMAL'
+    END AS status_estoque
+FROM produtos;
+
+-- 6. view kardex completo desnormalizado (auditoria e importação no power bi)
+CREATE VIEW IF NOT EXISTS vw_kardex_historico AS
+SELECT 
+    m.id AS movimentacao_id,
+    m.tipo_movimentacao,
+    m.quantidade,
+    m.motivo,
+    m.data_movimentacao,
+    p.id AS produto_id,
+    p.codigo_sku,
+    p.nome AS produto_nome,
+    p.categoria,
+    p.preco_custo,
+    ROUND(m.quantidade * p.preco_custo, 2) AS valor_movimentado,
+    u.nome AS usuario_responsavel,
+    COALESCE(f.razao_social, 'Movimentação Interna') AS fornecedor
+FROM movimentacoes m
+INNER JOIN produtos p ON m.produto_id = p.id
+INNER JOIN usuarios u ON m.usuario_id = u.id
+LEFT JOIN fornecedores f ON m.fornecedor_id = f.id;
